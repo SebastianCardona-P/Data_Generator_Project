@@ -99,13 +99,12 @@ The distributions used reflect patterns observed in real data:
   ![status.png](images/status.png)
   ![work.png](images/work.png)
   ![shift.png](images/shift.png)
-  
 
 - **Normal Distribution:**
   - **Performance Score:** Centered at 75 with a standard deviation of 10, clipped between 0 and 100, simulating employee evaluations where most perform above average.  
     ![performance.png](images/performance.png)
-  - **Bonus Percentage:** Centered at 5% with a standard deviation of 2%, clipped between 0 and 15%, reflecting moderate bonuses with realistic variability.  
-    ![porcentaje.png](images/porcentaje.png)
+  - **Bonus Percentage:** Centered at 5% with a standard deviation of 2%, clipped between 0 and 15%, reflecting moderate bonuses with realistic variability. 
+  ![porcentaje.png](images/porcentaje.png)
 
 
 - **Poisson Distribution:**
@@ -148,8 +147,7 @@ The `test_employee_data_generator.py` file includes unit tests covering 94% of t
 - Statistical properties of distributions (approximate means and standard deviations).
 - Edge cases (generation with a single row).
 
-![img.png](images/coverage.png)
-
+![coverage.png](images/coverage.png)
 
 ### Real-World Relevance
 
@@ -174,9 +172,9 @@ To generate the `employee_data.csv` file, follow these steps:
 
 2. Run the data generation script:
    ```bash
-   python employee_data_generator.py 1000
+   python employee_data_generator.py 10000000
    ```
-   This generates employee_data.csv with 1000 rows.
+   This generates employee_data.csv with 10000000 rows.
 
 3. Open the CSV file in a spreadsheet application or use Python to analyze it.
 
