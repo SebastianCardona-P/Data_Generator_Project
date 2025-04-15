@@ -3,8 +3,9 @@ import sys
 import pandas as pd
 import numpy as np
 from faker import Faker
-from scipy.stats import cauchy, norm
+from scipy.stats import lognorm
 from datetime import datetime, timedelta
+import os
 
 fake = Faker("en_US")  # US locale for consistent data
 
@@ -148,66 +149,64 @@ DEPARTMENT_JOB_TITLES = {
     ],
 }
 
-
 class EmployeeDataGenerator:
-    def __init__(self, row_count):
+    def __init__(self, row_count, start_id=1):
         self.row_count = row_count
         self.departments = list(DEPARTMENT_JOB_TITLES.keys())
         self.states = list(US_STATE_CITIES.keys())
+        self.start_id = start_id  # Starting ID for this chunk
 
     def generate_employee_id(self):
-        """Generate unique employee IDs"""
-        return [
-            f"EMP{fake.unique.random_number(digits=6, fix_len=True)}"
-            for _ in range(self.row_count)
-        ]
+        """Generate employee IDs incrementally starting from start_id"""
+        end_id = self.start_id + self.row_count
+        unique_numbers = range(self.start_id, end_id)
+        self.start_id = end_id  # Update start_id for the next chunk
+        return [f"EMP{num:012d}" for num in unique_numbers]
 
     def generate_base_salary(self, education_levels):
-        """Generate salaries with Cauchy distribution based on education"""
+        """Generate salaries with Log-Normal distribution based on education"""
         salaries = []
         for edu in education_levels:
             if edu == "High School":
-                loc, scale = 45000, 10000
+                s, scale = 0.3, 45000
             elif edu == "Professional":
-                loc, scale = 60000, 12000
+                s, scale = 0.3, 60000
             elif edu == "Master":
-                loc, scale = 80000, 15000
+                s, scale = 0.3, 80000
             else:  # PhD
-                loc, scale = 100000, 20000
-            salary = cauchy.rvs(loc=loc, scale=scale, size=1)[0]
+                s, scale = 0.3, 100000
+            salary = lognorm.rvs(s, scale=scale, size=1)[0]
             salaries.append(np.clip(salary, 30000, 200000))
-        return [round(salary, 2) for salary in salaries]  # Round to 2 decimals
+        return [round(salary, 2) for salary in salaries]
 
     def generate_state_city(self):
-
-        num_states = len(self.states)
-        mean = (num_states - 1) / 2
-        std_dev = num_states / 4
-        indices = np.arange(num_states)
-        weights = norm.pdf(indices, loc=mean, scale=std_dev)
-        weights /= weights.sum()
-        states = np.random.choice(self.states, size=self.row_count, p=weights)
+        """Generate states and cities with uniform distribution"""
+        states = np.random.choice(self.states, size=self.row_count)
         cities = [np.random.choice(US_STATE_CITIES[state]) for state in states]
         return states, cities
 
     def generate_data(self):
-        """Generate complete employee dataset"""
-        # genders with a "cake" distribution
-        genders = np.random.choice(["M", "F", "Other"], self.row_count, p=[0.45, 0.45, 0.1])
-        first_names = []
-        last_names = [fake.last_name() for _ in range(self.row_count)]
-        for gender in genders:
-            if gender == "M":
-                first_names.append(fake.first_name_male())
-            elif gender == "F":
-                first_names.append(fake.first_name_female())
-            else:
-                first_names.append(fake.first_name())
-
-        emails = [
-            f"{first.lower()}.{last.lower()}@company.com"
-            for first, last in zip(first_names, last_names)
-        ]
+        # Genders with specified probabilities
+        genders = np.random.choice(
+            ["M", "F", "Other"], self.row_count, p=[0.45, 0.45, 0.1]
+        )
+        first_names = np.array(
+            [
+                (
+                    fake.first_name_male()
+                    if g == "M"
+                    else fake.first_name_female() if g == "F" else fake.first_name()
+                )
+                for g in genders
+            ]
+        )
+        last_names = np.array([fake.last_name() for _ in range(self.row_count)])
+        emails = np.array(
+            [
+                f"{first.lower()}.{last.lower()}@company.com"
+                for first, last in zip(first_names, last_names)
+            ]
+        )
 
         education_levels = np.random.choice(
             ["High School", "Professional", "Master", "PhD"],
@@ -218,15 +217,16 @@ class EmployeeDataGenerator:
         employee_ids = self.generate_employee_id()
         base_salaries = self.generate_base_salary(education_levels)
         departments = np.random.choice(self.departments, size=self.row_count)
-        job_titles = [
-            np.random.choice(DEPARTMENT_JOB_TITLES[dept]) for dept in departments
-        ]
-        hire_dates = [
-            fake.date_between(start_date="-5y", end_date="today")
-            for _ in range(self.row_count)
-        ]
+        job_titles = np.array(
+            [np.random.choice(DEPARTMENT_JOB_TITLES[dept]) for dept in departments]
+        )
+        hire_dates = np.array(
+            [
+                fake.date_between(start_date="-5y", end_date="today")
+                for _ in range(self.row_count)
+            ]
+        )
 
-        # Generate last_review_date: after hire_date, before one year ago
         one_year_ago = datetime.now().date() - timedelta(days=365)
         last_review_dates = []
         for hire_date in hire_dates:
@@ -239,37 +239,40 @@ class EmployeeDataGenerator:
                     start_date=hire_date, end_date=one_year_ago
                 )
             last_review_dates.append(review_date)
+        last_review_dates = np.array(last_review_dates)
 
-        days_service = [(datetime.now().date() - date).days for date in hire_dates]
+        days_service = np.array(
+            [(datetime.now().date() - date).days for date in hire_dates]
+        )
 
-        # Generate employee_level based on days_service
         employee_levels = []
         for days in days_service:
-            if days < 365:  # Less than 1 year
+            if days < 365:
                 employee_levels.append("Entry")
-            elif 365 <= days <= 730:  # 1 to 2 years
+            elif 365 <= days <= 730:
                 employee_levels.append("Mid")
-            else:  # More than 2 years
+            else:
                 employee_levels.append("Senior")
+        employee_levels = np.array(employee_levels)
 
         states, cities = self.generate_state_city()
-        addresses = [fake.street_address() for _ in range(self.row_count)]
-        zip_codes = [fake.zipcode() for _ in range(self.row_count)]
+        addresses = np.array([fake.street_address() for _ in range(self.row_count)])
+        zip_codes = np.array([fake.zipcode() for _ in range(self.row_count)])
 
-        # Generate performance_score with 2 decimal places
         performance_scores = np.random.normal(75, 10, self.row_count).clip(0, 100)
-        performance_scores = [round(score, 2) for score in performance_scores]
+        performance_scores = np.round(performance_scores, 2)
 
-        # Generate bonus_percentage with 2 decimal places
         bonus_percentages = np.random.normal(5, 2, self.row_count).clip(0, 15)
-        bonus_percentages = [round(bonus, 2) for bonus in bonus_percentages]
+        bonus_percentages = np.round(bonus_percentages, 2)
 
         data = {
             "employee_id": employee_ids,
             "first_name": first_names,
             "last_name": last_names,
             "email": emails,
-            "phone_number": [fake.phone_number() for _ in range(self.row_count)],
+            "phone_number": np.array(
+                [fake.phone_number() for _ in range(self.row_count)]
+            ),
             "department": departments,
             "job_title": job_titles,
             "hire_date": hire_dates,
@@ -279,20 +282,22 @@ class EmployeeDataGenerator:
             "status": np.random.choice(
                 ["Active", "Inactive", "Leave"], self.row_count, p=[0.85, 0.10, 0.05]
             ),
-            "birth_date": [
-                fake.date_of_birth(minimum_age=18, maximum_age=65)
-                for _ in range(self.row_count)
-            ],
+            "birth_date": np.array(
+                [
+                    fake.date_of_birth(minimum_age=18, maximum_age=65)
+                    for _ in range(self.row_count)
+                ]
+            ),
             "address": addresses,
             "city": cities,
             "state": states,
             "zip_code": zip_codes,
-            "country": ["USA" for _ in range(self.row_count)],
+            "country": np.array(["USA" for _ in range(self.row_count)]),
             "gender": genders,
             "education": education_levels,
             "performance_score": performance_scores,
             "last_review_date": last_review_dates,
-            "employee_level": employee_levels,  # Now based on days_service
+            "employee_level": employee_levels,
             "vacation_days": np.random.poisson(15, self.row_count),
             "sick_days": np.random.poisson(5, self.row_count),
             "work_location": np.random.choice(
@@ -301,19 +306,51 @@ class EmployeeDataGenerator:
             "shift": np.random.choice(
                 ["Day", "Night", "Flexible"], self.row_count, p=[0.6, 0.3, 0.1]
             ),
-            "emergency_contact": [fake.phone_number() for _ in range(self.row_count)],
-            "ssn": [fake.ssn() for _ in range(self.row_count)],
-            "bank_account": [fake.bban() for _ in range(self.row_count)],
+            "emergency_contact": np.array(
+                [fake.phone_number() for _ in range(self.row_count)]
+            ),
+            "ssn": np.array([fake.ssn() for _ in range(self.row_count)]),
+            "bank_account": np.array([fake.bban() for _ in range(self.row_count)]),
         }
 
         return pd.DataFrame(data)
 
 
-def generate_and_save_data(row_count, output_file="employee_data.csv"):
-    """Generate data and save to CSV"""
-    generator = EmployeeDataGenerator(row_count)
-    df = generator.generate_data()
-    df.to_csv(output_file, index=False)
+def generate_and_save_data(
+    row_count, output_file="employee_data.csv", chunk_size=500000
+):
+    """Generate data in chunks and save to CSV incrementally to manage memory"""
+    # Calculate number of chunks
+    num_chunks = (row_count + chunk_size - 1) // chunk_size  # Ceiling division
+    first_chunk = True
+    current_id = 1  # Starting ID for incremental generation
+
+    for i in range(num_chunks):
+        # Calculate the number of rows for this chunk
+        start_idx = i * chunk_size
+        end_idx = min((i + 1) * chunk_size, row_count)
+        current_chunk_size = end_idx - start_idx
+
+        print(f"Generating chunk {i + 1}/{num_chunks} ({current_chunk_size} rows)...")
+
+        # Generate data for this chunk, passing the current_id as start_id
+        generator = EmployeeDataGenerator(current_chunk_size, start_id=current_id)
+        df_chunk = generator.generate_data()
+
+        # Update the current_id for the next chunk
+        current_id += current_chunk_size
+
+        # Write to CSV: append mode for subsequent chunks, write mode for the first
+        mode = "w" if first_chunk else "a"
+        header = first_chunk
+        df_chunk.to_csv(output_file, mode=mode, header=header, index=False)
+        first_chunk = False
+
+        del df_chunk
+        import gc
+
+        gc.collect()
+
     print(f"Generated {row_count} rows and saved to {output_file}")
 
 
